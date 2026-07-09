@@ -94,3 +94,7 @@ build-android-release/QtQmlQrAndroid-release.apk
 ```
 
 `android-signing.properties.example` は公開用の雛形です。実際の `android-signing.properties` は `.gitignore` で除外しています。
+
+## License
+
+MIT License
