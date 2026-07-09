@@ -1,0 +1,133 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: 6.11.1
+  QT_ROOT: C:\Qt\Qt
+  ANDROID_NDK_VERSION: 27.2.12479018
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      HAS_ANDROID_SIGNING: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_STORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android packages
+        shell: pwsh
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;37.0.0" "ndk;$env:ANDROID_NDK_VERSION"
+
+      - name: Install Qt for Android
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade "aqtinstall @ git+https://github.com/miurahr/aqtinstall.git@master" "py7zr==1.0.*"
+          python -m aqt install-qt windows android $env:QT_VERSION android_arm64_v8a --autodesktop --outputdir $env:QT_ROOT --UNSAFE-ignore-hash
+
+      - name: Build debug APK
+        shell: pwsh
+        run: |
+          .\build_android.ps1 `
+            -QtVersion $env:QT_VERSION `
+            -NdkVersion $env:ANDROID_NDK_VERSION `
+            -QtRoot $env:QT_ROOT `
+            -AndroidSdkRoot $env:ANDROID_HOME `
+            -JavaHome $env:JAVA_HOME
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: QtQmlQrAndroid-debug
+          path: build-android-debug/QtQmlQrAndroid-debug.apk
+
+      - name: Prepare release signing
+        if: ${{ env.HAS_ANDROID_SIGNING == 'true' }}
+        shell: pwsh
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          New-Item -ItemType Directory -Force -Path .\keystore | Out-Null
+          [System.IO.File]::WriteAllBytes(
+            (Resolve-Path .\keystore).Path + "\qt-qr-scanner-release.jks",
+            [System.Convert]::FromBase64String($env:ANDROID_KEYSTORE_BASE64)
+          )
+          @"
+          storeFile=.\keystore\qt-qr-scanner-release.jks
+          storePassword=$env:ANDROID_STORE_PASSWORD
+          keyAlias=$env:ANDROID_KEY_ALIAS
+          keyPassword=$env:ANDROID_KEY_PASSWORD
+          "@ | Set-Content -Encoding utf8NoBOM -Path .\android-signing.properties
+
+      - name: Build signed release APK
+        if: ${{ env.HAS_ANDROID_SIGNING == 'true' }}
+        shell: pwsh
+        run: |
+          .\build_android_release.ps1 `
+            -QtVersion $env:QT_VERSION `
+            -NdkVersion $env:ANDROID_NDK_VERSION `
+            -QtRoot $env:QT_ROOT `
+            -AndroidSdkRoot $env:ANDROID_HOME `
+            -JavaHome $env:JAVA_HOME
+
+      - name: Upload signed release APK
+        if: ${{ env.HAS_ANDROID_SIGNING == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: QtQmlQrAndroid-release
+          path: build-android-release/QtQmlQrAndroid-release.apk
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: android
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" release-artifacts/* --clobber
+          else
+            gh release create "$TAG_NAME" release-artifacts/* \
+              --title "QtQmlQrAndroid $TAG_NAME" \
+              --notes "Automated release build."
+          fi
