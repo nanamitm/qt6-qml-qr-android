@@ -61,6 +61,7 @@ jobs:
             -JavaHome $env:JAVA_HOME
 
       - name: Upload debug APK
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v7
         with:
           name: QtQmlQrAndroid-debug
@@ -118,6 +119,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
+          pattern: QtQmlQrAndroid-release
           path: release-artifacts
           merge-multiple: true
 
