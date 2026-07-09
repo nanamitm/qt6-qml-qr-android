@@ -52,8 +52,12 @@ qt_policy(SET QTP0004 NEW)
 
 qt_add_executable(appQtQmlQrAndroid
     src/main.cpp
+    src/QrGenerator.cpp
+    src/QrGenerator.h
     src/QrScanner.cpp
     src/QrScanner.h
+    third_party/nayuki-qr/qrcodegen.cpp
+    third_party/nayuki-qr/qrcodegen.hpp
 )
 
 qt_add_qml_module(appQtQmlQrAndroid
@@ -74,7 +78,7 @@ target_link_libraries(appQtQmlQrAndroid
         ZXing::ZXing
 )
 
-target_include_directories(appQtQmlQrAndroid PRIVATE src)
+target_include_directories(appQtQmlQrAndroid PRIVATE src third_party/nayuki-qr)
 
 set_target_properties(appQtQmlQrAndroid PROPERTIES
     WIN32_EXECUTABLE TRUE

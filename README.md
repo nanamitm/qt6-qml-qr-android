@@ -1,16 +1,19 @@
-# Qt 6 QML QR Scanner for Android
+# Qt 6 QML QR Tools for Android
 
-Qt 6 + QML + C++ で実装した Android 向け QR コードスキャナーです。
+Qt 6 + QML + C++ で実装した Android 向け QR コードツールです。QR コードの読み取りと生成の両方に対応しています。
 
 ## 特徴
 
 - `Qt Multimedia` を使ったカメラプレビュー
 - `QML VideoOutput` ベースの全画面スキャナー UI
 - `ZXing-C++` による QR コードデコード
+- `nayuki/QR-Code-generator` による QR コード生成
 - 実行時カメラ権限リクエスト
 - 背面カメラ優先
 - 重複読み取りのクールダウン
 - 読み取り成功時の短いバイブ通知
+- 入力文字列からの QR コード PNG 生成
+- 読み取り結果の種別表示とアプリ連携アクション
 - Android 向け署名付き release APK ビルドスクリプト付き
 
 ## フォルダー構成
@@ -20,6 +23,7 @@ src/                       C++ 実装
 qml/                       QML UI
 android/package/           Android manifest と Gradle テンプレート
 third_party/zxing-cpp/     ZXing-C++ のローカル同梱
+third_party/nayuki-qr/     Nayuki QR generator のローカル同梱
 create_android_keystore.ps1
 build_android.ps1
 build_android_release.ps1
@@ -51,6 +55,10 @@ android-signing.properties
 3. `-DQR_APP_FETCH_ZXING=ON` で CMake に取得させる
 
 この作業フォルダでは `third_party/zxing-cpp` を同梱しています。
+
+## QR 生成ライブラリ
+
+QR コード生成には `nayuki/QR-Code-generator` の C++ 実装を同梱しています。
 
 ## Android debug ビルド例
 
