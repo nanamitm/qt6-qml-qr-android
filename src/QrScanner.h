@@ -20,6 +20,9 @@ class QrScanner : public QObject
     Q_PROPERTY(QObject* videoOutput READ videoOutput WRITE setVideoOutput NOTIFY videoOutputChanged)
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusTextChanged)
     Q_PROPERTY(QString lastResult READ lastResult NOTIFY lastResultChanged)
+    Q_PROPERTY(QString lastResultType READ lastResultType NOTIFY lastResultTypeChanged)
+    Q_PROPERTY(QString primaryActionLabel READ primaryActionLabel NOTIFY primaryActionChanged)
+    Q_PROPERTY(bool primaryActionAvailable READ primaryActionAvailable NOTIFY primaryActionChanged)
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(bool hasResult READ hasResult NOTIFY hasResultChanged)
     Q_PROPERTY(int scanCount READ scanCount NOTIFY scanCountChanged)
@@ -33,6 +36,9 @@ public:
 
     QString statusText() const;
     QString lastResult() const;
+    QString lastResultType() const;
+    QString primaryActionLabel() const;
+    bool primaryActionAvailable() const;
     bool running() const;
     bool hasResult() const;
     int scanCount() const;
@@ -42,11 +48,14 @@ public:
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void clearLastResult();
+    Q_INVOKABLE void triggerPrimaryAction();
 
 signals:
     void videoOutputChanged();
     void statusTextChanged();
     void lastResultChanged();
+    void lastResultTypeChanged();
+    void primaryActionChanged();
     void runningChanged();
     void hasResultChanged();
     void scanCountChanged();
@@ -61,9 +70,14 @@ private:
     void attachVideoSink();
     void setStatusText(const QString& text);
     void setLastResult(const QString& text);
+    void setLastResultType(const QString& type);
     void setScanCount(int count);
     QCameraDevice chooseCameraDevice() const;
     QString decodeImage(const QImage& image) const;
+    QString classifyResultType(const QString& text) const;
+    QString classifyPrimaryActionLabel(const QString& text, const QString& type) const;
+    bool openAssociatedContent(const QString& text, const QString& type);
+    bool openWifiSettings() const;
     bool shouldAcceptResult(const QString& text) const;
     void rememberAcceptedResult(const QString& text);
     void triggerScanFeedback() const;
@@ -76,6 +90,7 @@ private:
     QPointer<QVideoSink> m_videoSink;
     QString m_statusText;
     QString m_lastResult;
+    QString m_lastResultType;
     QString m_lastAcceptedResult;
     bool m_running = false;
     bool m_decodeInFlight = false;

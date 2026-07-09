@@ -2,11 +2,15 @@
 
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QMetaObject>
 #include <QPermission>
 #include <QPermissions>
 #include <QVariant>
 #include <QDebug>
+#include <QUrl>
 #include <QtConcurrentRun>
 #include <qcoreapplication_platform.h>
 
@@ -40,6 +44,7 @@ QrScanner::QrScanner(QObject* parent)
     connect(this, &QrScanner::decodeSucceeded, this, [this](const QString& text) {
         rememberAcceptedResult(text);
         setLastResult(text);
+        setLastResultType(classifyResultType(text));
         setScanCount(m_scanCount + 1);
         setStatusText(QStringLiteral("QR code detected"));
         triggerScanFeedback();
@@ -77,6 +82,21 @@ QString QrScanner::statusText() const
 QString QrScanner::lastResult() const
 {
     return m_lastResult;
+}
+
+QString QrScanner::lastResultType() const
+{
+    return m_lastResultType;
+}
+
+QString QrScanner::primaryActionLabel() const
+{
+    return classifyPrimaryActionLabel(m_lastResult, m_lastResultType);
+}
+
+bool QrScanner::primaryActionAvailable() const
+{
+    return !m_lastResult.isEmpty() && !primaryActionLabel().isEmpty();
 }
 
 bool QrScanner::running() const
@@ -192,7 +212,24 @@ void QrScanner::stop()
 void QrScanner::clearLastResult()
 {
     setLastResult(QString());
+    setLastResultType(QString());
     setStatusText(QStringLiteral("Scanning for QR codes..."));
+}
+
+void QrScanner::triggerPrimaryAction()
+{
+    if (m_lastResult.isEmpty())
+        return;
+
+    if (openAssociatedContent(m_lastResult, m_lastResultType))
+        return;
+
+    if (QClipboard* clipboard = QGuiApplication::clipboard()) {
+        clipboard->setText(m_lastResult);
+        setStatusText(QStringLiteral("Result copied to clipboard"));
+    } else {
+        setStatusText(QStringLiteral("No app action is available for this result"));
+    }
 }
 
 void QrScanner::processFrame(const QVideoFrame& frame)
@@ -280,8 +317,19 @@ void QrScanner::setLastResult(const QString& text)
         return;
     m_lastResult = text;
     emit lastResultChanged();
+    emit primaryActionChanged();
     if (hadResult != hasResult())
         emit hasResultChanged();
+}
+
+void QrScanner::setLastResultType(const QString& type)
+{
+    if (m_lastResultType == type)
+        return;
+
+    m_lastResultType = type;
+    emit lastResultTypeChanged();
+    emit primaryActionChanged();
 }
 
 void QrScanner::setScanCount(int count)
@@ -318,6 +366,113 @@ QString QrScanner::decodeImage(const QImage& image) const
         return {};
 
     return QString::fromStdString(result.text());
+}
+
+QString QrScanner::classifyResultType(const QString& text) const
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+
+    const QString upper = trimmed.left(64).toUpper();
+
+    if (upper.startsWith(QStringLiteral("WIFI:")))
+        return QStringLiteral("Wi-Fi settings");
+    if (upper.startsWith(QStringLiteral("BEGIN:VCARD")) || upper.startsWith(QStringLiteral("MECARD:")))
+        return QStringLiteral("Contact card");
+    if (upper.startsWith(QStringLiteral("MAILTO:")) || upper.startsWith(QStringLiteral("MATMSG:")))
+        return QStringLiteral("Email address");
+    if (upper.startsWith(QStringLiteral("TEL:")))
+        return QStringLiteral("Phone number");
+    if (upper.startsWith(QStringLiteral("SMS:")) || upper.startsWith(QStringLiteral("SMSTO:")))
+        return QStringLiteral("SMS message");
+    if (upper.startsWith(QStringLiteral("GEO:")))
+        return QStringLiteral("Map location");
+    if (upper.startsWith(QStringLiteral("BEGIN:VEVENT")))
+        return QStringLiteral("Calendar event");
+    if (upper.startsWith(QStringLiteral("OTPAUTH:")))
+        return QStringLiteral("Two-factor setup");
+
+    const QUrl url(trimmed);
+    if (url.isValid() && !url.scheme().isEmpty() &&
+        (url.scheme() == QStringLiteral("http") || url.scheme() == QStringLiteral("https"))) {
+        return QStringLiteral("Web link");
+    }
+
+    return QStringLiteral("Plain text");
+}
+
+QString QrScanner::classifyPrimaryActionLabel(const QString& text, const QString& type) const
+{
+    if (text.trimmed().isEmpty())
+        return {};
+
+    if (type == QStringLiteral("Web link"))
+        return QStringLiteral("Open Link");
+    if (type == QStringLiteral("Email address"))
+        return QStringLiteral("Open Email");
+    if (type == QStringLiteral("Phone number"))
+        return QStringLiteral("Call");
+    if (type == QStringLiteral("SMS message"))
+        return QStringLiteral("Open SMS");
+    if (type == QStringLiteral("Map location"))
+        return QStringLiteral("Open Map");
+    if (type == QStringLiteral("Wi-Fi settings"))
+        return QStringLiteral("Open Wi-Fi");
+
+    return QStringLiteral("Copy");
+}
+
+bool QrScanner::openAssociatedContent(const QString& text, const QString& type)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty())
+        return false;
+
+    if (type == QStringLiteral("Wi-Fi settings")) {
+        if (openWifiSettings()) {
+            setStatusText(QStringLiteral("Opened Wi-Fi settings"));
+            return true;
+        }
+        return false;
+    }
+
+    const QUrl url(trimmed);
+    if ((type == QStringLiteral("Web link") ||
+         type == QStringLiteral("Email address") ||
+         type == QStringLiteral("Phone number") ||
+         type == QStringLiteral("SMS message") ||
+         type == QStringLiteral("Map location")) && url.isValid() && !url.scheme().isEmpty()) {
+        if (QDesktopServices::openUrl(url)) {
+            setStatusText(QStringLiteral("Opened matching app"));
+            return true;
+        }
+        return false;
+    }
+
+    return false;
+}
+
+bool QrScanner::openWifiSettings() const
+{
+#ifdef Q_OS_ANDROID
+    using AndroidApp = QNativeInterface::QAndroidApplication;
+    const QJniObject activity = AndroidApp::context();
+    if (!activity.isValid())
+        return false;
+
+    const QJniObject action = QJniObject::fromString(QStringLiteral("android.settings.WIFI_SETTINGS"));
+    QJniObject intent("android/content/Intent",
+                      "(Ljava/lang/String;)V",
+                      action.object<jstring>());
+    if (!intent.isValid())
+        return false;
+
+    activity.callMethod<void>("startActivity", "(Landroid/content/Intent;)V", intent.object());
+    return true;
+#else
+    return false;
+#endif
 }
 
 bool QrScanner::shouldAcceptResult(const QString& text) const

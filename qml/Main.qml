@@ -183,6 +183,25 @@ ApplicationWindow {
                     font.bold: true
                 }
 
+                Rectangle {
+                    visible: scanner.lastResultType.length > 0
+                    radius: 999
+                    color: "#10283a"
+                    border.color: "#2f7dbd"
+                    border.width: 1
+                    implicitWidth: resultTypeLabel.implicitWidth + 22
+                    implicitHeight: resultTypeLabel.implicitHeight + 10
+
+                    Label {
+                        id: resultTypeLabel
+                        anchors.centerIn: parent
+                        text: scanner.lastResultType
+                        color: "#d4ecff"
+                        font.pixelSize: 12
+                        font.bold: true
+                    }
+                }
+
                 TextArea {
                     text: scanner.lastResult.length > 0 ? scanner.lastResult : "No QR code detected yet."
                     color: "white"
@@ -210,6 +229,13 @@ ApplicationWindow {
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
+
+            Button {
+                text: scanner.primaryActionLabel.length > 0 ? scanner.primaryActionLabel : "Action"
+                Layout.fillWidth: true
+                enabled: scanner.primaryActionAvailable
+                onClicked: scanner.triggerPrimaryAction()
+            }
 
             Button {
                 text: scanner.running ? "Stop" : "Start"
