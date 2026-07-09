@@ -1,0 +1,4 @@
+storeFile=.\keystore\qt-qr-scanner-release.jks
+storePassword=replace-with-store-password
+keyAlias=qtqrscanner
+keyPassword=replace-with-key-password
